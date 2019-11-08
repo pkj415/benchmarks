@@ -765,35 +765,47 @@ int main(int argc, char *argv[])
     num_threads = atoi(argv[3]);
 
 #ifdef USE_MTCP
+    fprintf(stderr, "Note, we are using MTCP!!!");
     if ((ret = mtcp_init(argv[4])) != 0) {
         fprintf(stderr, "mtcp_init failed: %d\n", ret);
         return EXIT_FAILURE;
     }
 #endif
 
-    if (argc >= 6) {
-        message_size = atoi(argv[5]);
-    }
-
-    if (argc >= 7) {
-        max_pending = atoi(argv[6]);
-    }
-
-    if (argc >= 8) {
-        num_conns = atoi(argv[7]);
-    }
-
-    if (argc >= 9) {
-        openall_delay = atoi(argv[8]);
-    }
-
-    if (argc >= 10) {
-        num_msgs = atoi(argv[9]);
-    }
-
-    if (argc >= 11) {
-        max_conn_pending = atoi(argv[10]);
-    }
+    int c;
+    while ((c = getopt (argc, argv, "s::p::t::o::m::P::")) != -1)
+	    switch (c)
+	      {
+	      case 's':
+		// Msg size
+		message_size = atoi(optarg);
+		fprintf(stderr, "Msg size %d\n", message_size);
+		break;
+	      case 'p':
+		// Max pending msgs
+		max_pending = atoi(optarg);
+		break;
+	      case 't':
+		// Total conns
+		num_conns = atoi(optarg);
+		break;
+	      case 'o':
+		// Open all delay
+		openall_delay = atoi(optarg);
+		break;
+	      case 'm':
+		// Max msgs per conn
+		num_msgs = atoi(optarg);
+		fprintf(stderr, "Max msgs per conn %d\n", num_msgs);
+		break;
+	      case 'P':
+		// Max pending conns
+		max_conn_pending = atoi(optarg);
+		break;
+	      default:
+		fprintf(stderr, "Invalid options");
+		return 0;
+	      }
 
     assert(sizeof(*cs) % 64 == 0);
     cs = calloc(num_threads, sizeof(*cs));
