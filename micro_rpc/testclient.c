@@ -87,6 +87,7 @@ static uint32_t openall_delay = 0;
 static struct sockaddr_in *addrs;
 static size_t addrs_num;
 static volatile int start_running = 0;
+static volatile int stop_running = 0;
 
 struct connection {
     enum conn_state state;
@@ -740,10 +741,10 @@ int main(int argc, char *argv[])
 #ifdef USE_MTCP
     int ret;
 #endif
-    int num_threads, i, j;
+    int num_threads, i, j, num_seconds = 5;
     struct core *cs;
-    uint64_t t_prev, t_cur;
-    long double *ttp, tp, tp_total;
+    uint64_t t_prev, t_cur, t_start, t_end;
+    long double *ttp, tp, tp_total, tp_overall;
     uint32_t *hist, hx;
     uint64_t msg_total, open_total;
     double fracs[6] = { 0.5, 0.9, 0.95, 0.99, 0.999, 0.9999 };
@@ -751,10 +752,10 @@ int main(int argc, char *argv[])
 
     setlocale(LC_NUMERIC, "");
 
-    if (argc < 5 || argc > 11) {
+    if (argc < 5 || argc > 12) {
         fprintf(stderr, "Usage: ./testclient IP PORT CORES CONFIG "
             "[MESSAGE-SIZE] [MAX-PENDING] [TOTAL-CONNS] "
-            "[OPENALL-DELAY] [MAX-MSGS-CONN] [MAX-PEND-CONNS]\n");
+            "[OPENALL-DELAY] [MAX-MSGS-CONN] [NUM-SECONDS] [MAX-PEND-CONNS]\n");
         return EXIT_FAILURE;
     }
 
@@ -792,7 +793,11 @@ int main(int argc, char *argv[])
     }
 
     if (argc >= 11) {
-        max_conn_pending = atoi(argv[10]);
+        num_seconds = atoi(argv[10]);
+    }
+
+    if (argc >= 12) {
+        max_conn_pending = atoi(argv[11]);
     }
 
     assert(sizeof(*cs) % 64 == 0);
@@ -823,14 +828,20 @@ int main(int argc, char *argv[])
     }
 
     t_prev = get_nanos();
-    while (1) {
+    t_start = get_nanos();
+    tp_overall = 0;
+    int second = 0;
+    double ewma_throughput = 0.0;
+    while (second < num_seconds) {
         sleep(1);
+        second += 1;
         t_cur = get_nanos();
         tp_total = 0;
         msg_total = 0;
         open_total = 0;
         for (i = 0; i < num_threads; i++) {
             tp = cs[i].messages;
+            tp_overall += cs[i].messages;
             open_total += cs[i].conn_open;
             cs[i].messages = 0;
             tp /= (double) (t_cur - t_prev) / 1000000000.;
@@ -847,10 +858,10 @@ int main(int argc, char *argv[])
         hist_fract_buckets(hist, msg_total, fracs, fracs_pos,
                 sizeof(fracs) / sizeof(fracs[0]));
 
-
-        printf("TP: total=%'.2Lf mbps  50p=%d us  90p=%d us  95p=%d us  "
+        ewma_throughput = ewma_throughput * 0.8 + 0.2 * (tp_total * message_size * 8 / 1000.);
+        printf("TP: total=%'.2Lf kbps  50p=%d us  90p=%d us  95p=%d us  "
                 "99p=%d us  99.9p=%d us  99.99p=%d us  flows=%lu",
-                tp_total * message_size * 8 / 1000000.,
+                tp_total * message_size * 8 / 1000.,
                 hist_value(fracs_pos[0]), hist_value(fracs_pos[1]),
                 hist_value(fracs_pos[2]), hist_value(fracs_pos[3]),
                 hist_value(fracs_pos[4]), hist_value(fracs_pos[5]),
@@ -896,6 +907,20 @@ int main(int argc, char *argv[])
         memset(hist, 0, sizeof(*hist) * HIST_BUCKETS);
 
         t_prev = t_cur;
+    }
+    t_end = get_nanos();
+    tp_overall /= (double) (t_end - t_start) / 1000000000.;
+    fprintf(stderr, "Average TP: total=%Lf kbps\n",
+      tp_overall * message_size * 8 / 1000.);
+    //assert(ewma_throughput != (tp_overall * message_size * 8 / 1000.));
+    //fprintf(stderr, "EWMA Average TP: total=%Lf kbps\n",
+    //  ewma_throughput);
+
+    stop_running = 1;
+    for (i = 0; i < num_threads; i++) {
+        if (pthread_join(cs[i].pthread, NULL) != 0) {
+            fprintf(stderr, "pthread_join failed\n");
+        }
     }
 
 #ifdef USE_MTCP
