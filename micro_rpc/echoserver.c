@@ -496,6 +496,7 @@ static void *thread_run(void *arg)
                         /* error, close connection */
                         fprintf(stderr, "[%d] closing connection E\n", cn);
                         conn_close(co, c);
+                        continue;
                     }
 
                     conn_epupdate(co, c, 1);
@@ -558,12 +559,12 @@ int main(int argc, char *argv[])
         working_set = atoi(argv[7]);
     }
     if (argc >= 9) {
-        if ((end = strchr(argv[8], ',')) == NULL) {
-            return EXIT_FAILURE;
-        }
-        *end = 0;
-        icache_block = atoi(argv[8]);
-        icache_set = atoi(end + 1);
+        //if ((end = strchr(argv[8], ',')) == NULL) {
+        //    return EXIT_FAILURE;
+        //}
+        //*end = 0;
+        //icache_block = atoi(argv[8]);
+        //icache_set = atoi(end + 1);
     }
     if (argc >= 10) {
         listen_backlog = atoi(argv[9]);
