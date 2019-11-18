@@ -662,7 +662,7 @@ static void *thread_run(void *arg)
         fprintf(stderr, "[%d] malloc failed\n", cn);
     }
 
-    while (1) {
+    while (!stop_running) {
         if (c->closed_conns != NULL)
             connect_more(c);
 
@@ -677,6 +677,14 @@ static void *thread_run(void *arg)
             conn_events(c, co, evs[i].events);
         }
     }
+
+    for (i = 0; i < (int) num_conns; i++) {
+        co = &c->conns[i];
+        if (co->state != CONN_CLOSED) {
+          conn_close(c, co);
+        }
+    }
+
 }
 
 static inline void hist_fract_buckets(uint32_t *hist, uint64_t total,
